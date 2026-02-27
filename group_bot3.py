@@ -579,6 +579,63 @@ def keep_alive():
             bot.send_message(ADMIN_ID, "🤖 机器人运行正常（心跳检测）")
         except Exception as e:
             print(f"⚠️ 心跳检测失败：{e}")
+# -------------------------- 新增：HTTP 保活接口（适配 Render Web Service） --------------------------
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+# 简单的健康检查接口
+@app.route('/')
+def health_check():
+    return "🤖 TG Bot is running!", 200
+
+# 启动 Flask 服务的函数
+def run_flask():
+    # 使用 Render 分配的端口，没有则用 8080
+    port = int(os.getenv("PORT", 8080))
+    # 绑定 0.0.0.0 让 Render 能检测到端口
+    app.run(host="0.0.0.0", port=port, debug=False)
+
+# -------------------------- 原有保活&启动逻辑修改 --------------------------
+def keep_alive():
+    while True:
+        time.sleep(3600)
+        try:
+            bot.send_message(ADMIN_ID, "🤖 机器人运行正常（心跳检测）")
+        except Exception as e:
+            print(f"⚠️ 心跳检测失败：{e}")
+
+if __name__ == "__main__":
+    if not BOT_TOKEN or ADMIN_ID == 0 or TARGET_GROUP_ID == 0:
+        print("❌ 请配置环境变量：BOT_TOKEN、ADMIN_ID、TARGET_GROUP_ID")
+        exit(1)
+    
+    # 启动 Flask HTTP 服务（后台线程）
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # 启动心跳保活
+    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
+    
+    print("🤖 机器人已启动（商城+SQLite+Render Web Service适配）")
+    print("✅ HTTP 保活接口已启动，端口：", os.getenv("PORT", 8080))
+    print("✅ 监听消息中...")
+    
+    # 机器人主循环
+    while True:
+        try:
+            bot.polling(
+                none_stop=True,
+                skip_pending=True,
+                timeout=30,
+                allowed_updates=["message", "callback_query", "new_chat_members"]
+            )
+        except Exception as e:
+            print(f"⚠️ 连接断开，5秒后重连... 错误：{str(e)[:50]}")
+            time.sleep(5)
+
 
 if __name__ == "__main__":
     # 校验核心环境变量
