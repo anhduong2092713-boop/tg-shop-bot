@@ -596,6 +596,23 @@ def run_flask():
     port = int(os.getenv("PORT", 8080))
     # 绑定 0.0.0.0 让 Render 能检测到端口
     app.run(host="0.0.0.0", port=port, debug=False)
+# -------------------------- 必须添加：Flask 保活接口 --------------------------
+from flask import Flask
+import threading
+import os
+
+app = Flask(__name__)
+
+# 健康检查接口，让 Render 能检测到端口
+@app.route("/")
+def hello():
+    return "🤖 TG Bot is running!", 200
+
+def run_web_server():
+    # 读取 Render 自动分配的 PORT 环境变量
+    port = int(os.environ.get("PORT", 8080))
+    # 绑定 0.0.0.0 让外部能访问
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # -------------------------- 原有保活&启动逻辑修改 --------------------------
 def keep_alive():
