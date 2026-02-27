@@ -1,0 +1,5 @@
+# Telegram Bot 核心库
+pyTelegramBotAPI==4.16.1
+# 环境变量读取
+python-dotenv==1.0.1
+# SQLite为Python内置，无需额外安装
