@@ -9,9 +9,6 @@ import sqlite3
 # Flask保活接口依赖
 from flask import Flask
 import threading
-# 订单导出依赖
-import pandas as pd
-from io import BytesIO
 
 # -------------------------- 1. 环境配置 --------------------------
 load_dotenv()
@@ -532,39 +529,10 @@ def all_orders_cmd(message):
         order_text += "——————————\n"
     bot.send_message(message.chat.id, order_text)
 
-# -------------------------- 9. 订单导出功能（管理员专属） --------------------------
-@bot.message_handler(commands=['exportorders'])
-def export_orders(message):
-    if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "❌ 无权限！仅管理员可导出订单数据")
-        return
-    
-    orders = db_query("SELECT * FROM orders ORDER BY create_time DESC")
-    if not orders:
-        bot.send_message(message.chat.id, "📜 暂无订单数据可导出")
-        return
-    
-    df = pd.DataFrame(orders)
-    df['create_time'] = pd.to_datetime(df['create_time'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M:%S')
-    df['pay_time'] = pd.to_datetime(df['pay_time'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M:%S')
-    df['ship_time'] = pd.to_datetime(df['ship_time'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M:%S')
-    
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='订单数据', index=False)
-    output.seek(0)
-    
-    bot.send_document(
-        chat_id=message.chat.id,
-        document=output,
-        filename=f"订单数据_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-        caption="📊 订单数据导出完成！"
-    )
-
 # -------------------------- 10. 优化版防休眠心跳（15分钟一次，低资源占用） --------------------------
 def keep_alive_heartbeat():
     while True:
-        time.sleep(900)  # 从10分钟改为15分钟，刚好低于Render休眠阈值，减少资源占用
+        time.sleep(850)  # 15分钟，低于Render休眠阈值
         try:
             bot.send_message(ADMIN_ID, "🔋 防休眠心跳：机器人保持活跃，避免Render休眠")
             print("✅ 防休眠心跳发送成功")
@@ -609,10 +577,10 @@ if __name__ == "__main__":
             bot.polling(
                 none_stop=True,
                 skip_pending=True,
-                timeout=60,          # 超时从30秒延长到60秒，减少重连频率
+                timeout=60,          # 超时从30秒延长到60秒
                 long_polling_timeout=30,
                 allowed_updates=["message", "callback_query", "new_chat_members"]
             )
         except Exception as e:
             print(f"⚠️ 连接断开，10秒后重连... 错误：{str(e)[:100]}")
-            time.sleep(10)  # 重连间隔从5秒延长到10秒，避免频繁重试占用资源
+            time.sleep(10)  # 重连间隔从5秒延长到10秒
