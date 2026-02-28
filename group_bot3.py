@@ -9,6 +9,7 @@ import sqlite3
 # Flask保活接口依赖
 from flask import Flask
 import threading
+import requests  # 新增：用于自 ping
 
 # -------------------------- 1. 环境配置 --------------------------
 load_dotenv()
@@ -21,6 +22,11 @@ PAY_INFO = {
     "alipay": os.getenv("ALIPAY", "你的支付宝账号"),
     "wechat": os.getenv("WECHAT", "你的微信账号")
 }
+# 新增：获取 Render 分配的公网 URL（自动注入）
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+# 如果没有外部 URL（比如本地测试），可手动指定或留空
+if not RENDER_EXTERNAL_URL:
+    print("⚠️ 未检测到 RENDER_EXTERNAL_URL，自 ping 功能可能无效")
 
 # -------------------------- 2. Flask保活接口（解决Render端口检测） --------------------------
 app = Flask(__name__)
@@ -487,7 +493,7 @@ def back_to_menu(call):
     bot.answer_callback_query(call.id, "🔙 返回菜单...")
     send_menu(call.message)
 
-# -------------------------- 8. 管理员功能 --------------------------
+# -------------------------- 9. 管理员功能 --------------------------
 @bot.message_handler(commands=['addcard'])
 def add_card_cmd(message):
     if message.from_user.id != ADMIN_ID:
@@ -548,6 +554,26 @@ def keep_alive():
         except Exception as e:
             print(f"⚠️ 心跳检测失败：{e}")
 
+# -------------------------- 新增：自 ping 函数（防止 Render 休眠） --------------------------
+def self_ping():
+    """每隔10分钟向自己的Flask端点发送HTTP请求，防止Render因无入站流量而休眠"""
+    while True:
+        time.sleep(600)  # 10分钟
+        # 优先使用 Render 提供的外部 URL
+        url = RENDER_EXTERNAL_URL
+        if not url:
+            # 如果没有外部URL（本地调试），尝试 localhost
+            port = os.getenv("PORT", 8080)
+            url = f"http://localhost:{port}/"
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                print("✅ 自 ping 成功，保持活跃")
+            else:
+                print(f"⚠️ 自 ping 返回非200状态码：{response.status_code}")
+        except Exception as e:
+            print(f"⚠️ 自 ping 失败：{e}")
+
 # -------------------------- 12. 主启动函数（优化版bot.polling，更抗波动） --------------------------
 if __name__ == "__main__":
     if not BOT_TOKEN or ADMIN_ID == 0 or TARGET_GROUP_ID == 0:
@@ -558,17 +584,22 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # 启动原有心跳
+    # 启动原有心跳（通知管理员）
     keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
     keep_alive_thread.start()
     
-    # 启动优化版防休眠心跳
+    # 启动优化版防休眠心跳（向管理员发消息）
     anti_sleep_thread = threading.Thread(target=keep_alive_heartbeat, daemon=True)
     anti_sleep_thread.start()
     
+    # 新增：启动自 ping 线程
+    self_ping_thread = threading.Thread(target=self_ping, daemon=True)
+    self_ping_thread.start()
+    
     print("🤖 机器人已启动（商城+SQLite+Render Web Service适配）")
     print("✅ HTTP 保活接口已启动，端口：", os.getenv("PORT", 8080))
-    print("✅ 防休眠心跳已启动（每15分钟），避免Render免费版休眠")
+    print("✅ 防休眠心跳已启动（每15分钟向管理员发消息）")
+    print("✅ 自 ping 线程已启动（每10分钟访问自身端点，防止休眠）")
     print("✅ 监听消息中...")
     
     # 优化版bot.polling循环（更长超时+更慢重连，抗波动）
