@@ -622,6 +622,16 @@ def keep_alive():
             bot.send_message(ADMIN_ID, "🤖 机器人运行正常（心跳检测）")
         except Exception as e:
             print(f"⚠️ 心跳检测失败：{e}")
+# -------------------------- 新增：防休眠心跳（每10分钟触发，避免Render休眠） --------------------------
+def anti_sleep_heartbeat():
+    while True:
+        time.sleep(600)  # 每10分钟（600秒）发一次心跳，小于15分钟休眠阈值
+        try:
+            # 发送心跳消息给管理员，保持Render服务活跃
+            bot.send_message(ADMIN_ID, "🔋 防休眠心跳：机器人保持活跃，避免Render休眠")
+            print("✅ 防休眠心跳发送成功，服务持续活跃")
+        except Exception as e:
+            print(f"⚠️ 防休眠心跳发送失败：{str(e)[:50]}")
 
 if __name__ == "__main__":
     if not BOT_TOKEN or ADMIN_ID == 0 or TARGET_GROUP_ID == 0:
@@ -632,14 +642,19 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # 启动心跳保活
+    # 启动原有心跳保活（1小时一次）
     keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
     keep_alive_thread.start()
     
+    # -------------------------- 新增：启动防休眠心跳线程 --------------------------
+    anti_sleep_thread = threading.Thread(target=anti_sleep_heartbeat, daemon=True)
+    anti_sleep_thread.start()
+    
     print("🤖 机器人已启动（商城+SQLite+Render Web Service适配）")
     print("✅ HTTP 保活接口已启动，端口：", os.getenv("PORT", 8080))
+    print("✅ 防休眠心跳已启动（每10分钟），避免Render免费版休眠")
     print("✅ 监听消息中...")
-    
+
     # 机器人主循环
     while True:
         try:
